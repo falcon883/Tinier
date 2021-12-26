@@ -1,11 +1,14 @@
 package com.durvank883.tinier
 
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -81,6 +84,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+fun Context.getActivity(): ComponentActivity? = when (this) {
+    is ComponentActivity -> this
+    is ContextWrapper -> baseContext.getActivity()
+    else -> null
+}
+
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
@@ -136,7 +145,7 @@ fun CheckPermission(content: @Composable () -> Unit) {
                     !multiplePermissionsState.permissionRequested -> {
                 if (doNotShowRationale) {
                     Column(
-                        verticalArrangement = Arrangement.Center,
+                        verticalArrangement = Arrangement.SpaceBetween,
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .fillMaxSize()
@@ -144,11 +153,25 @@ fun CheckPermission(content: @Composable () -> Unit) {
                     ) {
                         val context = LocalContext.current
 
-                        Text(
-                            "Storage read and write permissions are denied. Please, grant us " +
-                                    "access on the Settings screen."
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_tinier),
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp)
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Image(
+                                painter = painterResource(id = R.drawable.folders),
+                                contentDescription = null,
+                                modifier = Modifier.size(128.dp)
+                            )
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Text(
+                                text = "Storage read and write permissions are denied. Please, grant us " +
+                                        "access on the Settings screen.",
+                                textAlign = TextAlign.Center
+                            )
+                        }
                         Button(
                             onClick = {
                                 context.startActivity(
@@ -193,18 +216,21 @@ fun CheckPermission(content: @Composable () -> Unit) {
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center,
                         ) {
-                            OutlinedButton(onClick = { doNotShowRationale = true }) {
-                                Text("Don't show again")
+                            OutlinedButton(
+                                onClick = { doNotShowRationale = true },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Close")
                             }
                             Spacer(Modifier.width(8.dp))
                             Button(
                                 onClick = {
                                     multiplePermissionsState.launchMultiplePermissionRequest()
-                                }
+                                },
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Text("Request permissions")
+                                Text("Request")
                             }
                         }
                     }
@@ -215,7 +241,7 @@ fun CheckPermission(content: @Composable () -> Unit) {
             // to enable them the future there if they want to.
             else -> {
                 Column(
-                    verticalArrangement = Arrangement.Center,
+                    verticalArrangement = Arrangement.SpaceBetween,
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .fillMaxSize()
@@ -223,12 +249,27 @@ fun CheckPermission(content: @Composable () -> Unit) {
                 ) {
                     val context = LocalContext.current
 
-                    Text(
-                        "Storage read/write permission is denied. See this FAQ with " +
-                                "information about why we need this permission. Please, grant us " +
-                                "access on the Settings screen."
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_tinier),
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Image(
+                            painter = painterResource(id = R.drawable.folders),
+                            contentDescription = null,
+                            modifier = Modifier.size(128.dp)
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Text(
+                            text = "Storage read/write permission is denied." +
+                                    "We need the storage permission to access and to save the images locally." +
+                                    "We do not store any of your images. " +
+                                    "The whole process takes place in your device",
+                            textAlign = TextAlign.Center
+                        )
+                    }
                     Button(
                         onClick = {
                             context.startActivity(
@@ -253,11 +294,12 @@ fun CheckPermission(content: @Composable () -> Unit) {
 fun Dashboard(navController: NavHostController, viewModel: MainViewModel) {
 
     val photoList by viewModel.photos.collectAsState()
+    val context = LocalContext.current
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
     ) { uriList ->
-        viewModel.setPhotos(uriList)
+        viewModel.setPhotos(context, uriList)
     }
 
     val totalSelected by viewModel.totalSelected.collectAsState()
@@ -506,11 +548,13 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
             val totalPhotos = viewModel.photos.collectAsState().value.size
             var sliderPosition by remember { mutableStateOf(80f) }
             var expanded by remember { mutableStateOf(false) }
-            val items = listOf("original", "png", "jpg", "webp")
+            val exportFormats = listOf("original", "png", "jpg", "webp")
             var selectedIndex by remember { mutableStateOf(0) }
             var imageSize by remember { mutableStateOf("0") }
             var isSizeInKB by remember { mutableStateOf(true) }
             var fileName by remember { mutableStateOf("") }
+
+            val context = LocalContext.current
 
             Column(
                 modifier = Modifier
@@ -568,7 +612,7 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
                             fontWeight = FontWeight.Bold
                         )
                     ) {
-                        append("Image Size:\n")
+                        append("Max Image Size:\n")
                     }
                     withStyle(
                         style = SpanStyle(
@@ -584,7 +628,7 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
                 OutlinedTextField(
                     value = imageSize,
                     onValueChange = { imageSize = it },
-                    label = { Text("Enter image size") },
+                    label = { Text("Enter max image size") },
                     maxLines = 1,
                     modifier = Modifier
                         .fillMaxWidth(),
@@ -633,7 +677,7 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text(
-                            text = items[selectedIndex],
+                            text = exportFormats[selectedIndex],
                         )
                         Icon(
                             imageVector = Icons.Filled.KeyboardArrowDown,
@@ -646,7 +690,7 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
                         onDismissRequest = { expanded = false },
                         modifier = Modifier.width((LocalConfiguration.current.screenWidthDp - 30).dp)
                     ) {
-                        items.forEachIndexed { index, s ->
+                        exportFormats.forEachIndexed { index, s ->
                             DropdownMenuItem(onClick = {
                                 selectedIndex = index
                                 expanded = false
@@ -689,7 +733,33 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
                 Spacer(modifier = Modifier.padding(vertical = 10.dp))
 
                 Button(
-                    onClick = { /*TODO*/ },
+                    onClick = {
+                        val activity: ComponentActivity? = context.getActivity()
+
+                        if (activity == null) {
+                            Toast.makeText(
+                                context,
+                                "Activity context is null." +
+                                        " Please try again. " +
+                                        "If the issue persists please report it.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            return@Button
+                        }
+
+                        viewModel.compress(
+                            activity = activity,
+                            quality = sliderPosition.roundToInt(),
+                            maxImageSize = mapOf(
+                                when (isSizeInKB) {
+                                    true -> "KB"
+                                    false -> "MB"
+                                } to imageSize
+                            ),
+                            exportFormat = exportFormats[selectedIndex],
+                            trailingName = fileName
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -715,45 +785,49 @@ fun TestScreen() {
         color = MaterialTheme.colors.background
     ) {
         Column(
-            verticalArrangement = Arrangement.SpaceBetween,
-            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(15.dp)
+                .padding(15.dp),
         ) {
-            Image(
-                painter = painterResource(id = R.drawable.ic_tinier),
-                contentDescription = null,
-                modifier = Modifier.size(64.dp)
-            )
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Image(
-                    painter = painterResource(id = R.drawable.folders),
-                    contentDescription = null,
-                    modifier = Modifier.size(128.dp)
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = "Tinier requires storage read and write permissions. " +
-                            "Please grant them for the app to function properly.",
-                    fontSize = 18.sp,
-                    textAlign = TextAlign.Center
-                )
-            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
+                horizontalArrangement = Arrangement.Center
             ) {
-                OutlinedButton(onClick = { }) {
-                    Text("Don't show again")
+                Box(contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        progress = 0.1f,
+                        modifier = Modifier.size(128.dp)
+                    )
+                    Text(
+                        text = "10%",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
                 }
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    onClick = { }
-                ) {
-                    Text("Request permissions")
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(text = buildAnnotatedString {
+                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                    append("Total Photos: ")
                 }
+                append("100")
+            })
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(text = buildAnnotatedString {
+                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                    append("Total Compressed: ")
+                }
+                append("10")
+            })
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Button(onClick = { }, modifier = Modifier.fillMaxWidth()) {
+                Text(text = "Stop")
             }
         }
     }

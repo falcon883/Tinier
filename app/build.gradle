@@ -74,6 +74,9 @@ dependencies {
     // Accompanist - Permission
     implementation "com.google.accompanist:accompanist-permissions:0.21.4-beta"
 
+    // Uri -> File
+    implementation 'com.github.HBiSoft:PickiT:2.0.2'
+
     testImplementation 'junit:junit:4.13.2'
 
     androidTestImplementation 'androidx.test.ext:junit:1.1.3'
