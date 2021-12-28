@@ -1,7 +1,5 @@
 package com.durvank883.tinier
 
-import android.content.Context
-import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -41,6 +39,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -52,6 +51,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -62,6 +64,7 @@ import com.durvank883.tinier.model.Photo
 import com.durvank883.tinier.route.MainRoutes
 import com.durvank883.tinier.ui.theme.Purple200
 import com.durvank883.tinier.ui.theme.TinierTheme
+import com.durvank883.tinier.util.Helper.getActivity
 import com.durvank883.tinier.viewmodel.MainViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -84,12 +87,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-fun Context.getActivity(): ComponentActivity? = when (this) {
-    is ComponentActivity -> this
-    is ContextWrapper -> baseContext.getActivity()
-    else -> null
-}
-
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
@@ -103,7 +100,7 @@ fun MainScreen() {
             }
         }
 
-        composable(MainRoutes.Compress.route) {
+        composable(MainRoutes.CompressConfig.route) {
             val parentEntry = remember {
                 navController.getBackStackEntry(MainRoutes.Dashboard.route)
             }
@@ -111,6 +108,19 @@ fun MainScreen() {
                 parentEntry
             )
             Compress(navController = navController, viewModel = parentViewModel)
+        }
+
+        composable(MainRoutes.CompressProgress.route) {
+            val parentEntry = remember {
+                navController.getBackStackEntry(MainRoutes.Dashboard.route)
+            }
+            val parentViewModel = hiltViewModel<MainViewModel>(
+                parentEntry
+            )
+            CompressProgress(
+                navController = navController,
+                viewModel = parentViewModel,
+            )
         }
     }
 }
@@ -372,7 +382,7 @@ fun Dashboard(navController: NavHostController, viewModel: MainViewModel) {
                 exit = fadeOut()
             ) {
                 FloatingActionButton(
-                    onClick = { navController.navigate(MainRoutes.Compress.route) },
+                    onClick = { navController.navigate(MainRoutes.CompressConfig.route) },
                 ) {
                     Icon(
                         imageVector = Icons.Filled.ArrowForward,
@@ -554,8 +564,6 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
             var isSizeInKB by remember { mutableStateOf(true) }
             var fileName by remember { mutableStateOf("") }
 
-            val context = LocalContext.current
-
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -734,21 +742,7 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
 
                 Button(
                     onClick = {
-                        val activity: ComponentActivity? = context.getActivity()
-
-                        if (activity == null) {
-                            Toast.makeText(
-                                context,
-                                "Activity context is null." +
-                                        " Please try again. " +
-                                        "If the issue persists please report it.",
-                                Toast.LENGTH_LONG
-                            ).show()
-                            return@Button
-                        }
-
-                        viewModel.compress(
-                            activity = activity,
+                        viewModel.setCompressConfig(
                             quality = sliderPosition.roundToInt(),
                             maxImageSize = mapOf(
                                 when (isSizeInKB) {
@@ -758,7 +752,10 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
                             ),
                             exportFormat = exportFormats[selectedIndex],
                             trailingName = fileName
-                        )
+                        ).invokeOnCompletion {
+                            Log.d(TAG, "Compress Config Error: $it")
+                            navController.navigate(MainRoutes.CompressProgress.route)
+                        }
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -780,54 +777,248 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
 }
 
 @Composable
-fun TestScreen() {
-    Surface(
-        color = MaterialTheme.colors.background
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(15.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(
-                        progress = 0.1f,
-                        modifier = Modifier.size(128.dp)
-                    )
-                    Text(
-                        text = "10%",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp
-                    )
+fun CompressProgress(
+    navController: NavHostController,
+    viewModel: MainViewModel,
+    lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current,
+) {
+
+    val context = LocalContext.current
+    val activity: ComponentActivity? = context.getActivity()
+
+
+    if (activity == null) {
+        Toast.makeText(
+            context,
+            "Activity context is null." +
+                    " Please try again. " +
+                    "If the issue persists please report it.",
+            Toast.LENGTH_LONG
+        ).show()
+        navController.popBackStack()
+    } else {
+
+        val totalResolved by viewModel.totalImagePathResolved.collectAsState()
+        val totalCompressed by viewModel.totalCompressed.collectAsState()
+
+        DisposableEffect(lifecycleOwner) {
+
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_CREATE) {
+                    viewModel.compress(activity = activity)
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            lifecycleOwner.lifecycle.addObserver(observer)
 
-            Text(text = buildAnnotatedString {
-                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
-                    append("Total Photos: ")
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+            }
+        }
+
+        var progress by remember {
+            mutableStateOf(0)
+        }
+
+        if (totalResolved != 0) {
+            progress = (totalCompressed * 100) / totalResolved
+        }
+
+        Surface(
+            color = MaterialTheme.colors.background
+        ) {
+            AnimatedVisibility(
+                visible = totalCompressed != totalResolved || totalResolved == 0,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(15.dp),
+                ) {
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(
+                                    progress = (progress / 100f),
+                                    modifier = Modifier.size(240.dp)
+                                )
+                                Text(
+                                    text = "$progress%",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 24.sp
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(text = buildAnnotatedString {
+                            withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                                append("Total Photos: ")
+                            }
+                            append(totalResolved.toString())
+                        })
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(text = buildAnnotatedString {
+                            withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                                append("Total Compressed: ")
+                            }
+                            append(totalCompressed.toString())
+                        })
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row {
+                        OutlinedButton(onClick = { }, modifier = Modifier.weight(1f)) {
+                            Text(text = "Stop")
+                        }
+                        Button(
+                            onClick = { },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(text = "Background")
+                        }
+                    }
                 }
-                append("100")
-            })
+            }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(text = buildAnnotatedString {
-                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
-                    append("Total Compressed: ")
+            AnimatedVisibility(
+                visible = totalCompressed == totalResolved && totalResolved != 0,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Box {
+                    Image(
+                        painter = painterResource(id = R.drawable.confetti),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        alignment = Alignment.TopCenter,
+                        contentScale = ContentScale.Crop
+                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_check_circle_24),
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            colorFilter = ColorFilter.tint(color = Color(119, 221, 119))
+                        )
+                        Text(
+                            text = "It's Done 🥳",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
-                append("10")
-            })
+            }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(10.dp))
+@Composable
+fun TestScreen() {
+    val isCompleted by remember {
+        mutableStateOf(true)
+    }
 
-            Button(onClick = { }, modifier = Modifier.fillMaxWidth()) {
-                Text(text = "Stop")
+    Surface(
+        color = MaterialTheme.colors.background
+    ) {
+        AnimatedVisibility(visible = !isCompleted) {
+            Column(
+                verticalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(15.dp),
+            ) {
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                progress = 0.1f,
+                                modifier = Modifier.size(240.dp)
+                            )
+                            Text(
+                                text = "10%",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 24.sp
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(text = buildAnnotatedString {
+                        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                            append("Total Photos: ")
+                        }
+                        append("100")
+                    })
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(text = buildAnnotatedString {
+                        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                            append("Total Compressed: ")
+                        }
+                        append("10")
+                    })
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row {
+                    OutlinedButton(onClick = { }, modifier = Modifier.weight(1f)) {
+                        Text(text = "Stop")
+                    }
+                    Button(onClick = { }, modifier = Modifier.weight(1f)) {
+                        Text(text = "Background")
+                    }
+                }
+            }
+        }
+
+        AnimatedVisibility(visible = isCompleted) {
+            Box {
+                Image(
+                    painter = painterResource(id = R.drawable.confetti),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    alignment = Alignment.TopCenter,
+                    contentScale = ContentScale.Crop
+                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_check_circle_24),
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        colorFilter = ColorFilter.tint(color = Color(119, 221, 119))
+                    )
+                    Text(text = "It's Done 🥳", fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }

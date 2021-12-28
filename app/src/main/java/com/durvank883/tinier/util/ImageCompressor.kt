@@ -34,11 +34,6 @@ class ImageCompressor @Inject constructor(
     private var size: Long = 0
     private var trailingName: String = "_compressed"
 
-    private tailrec fun Context.getActivity(): Activity? = when (this) {
-        is Activity -> this
-        else -> (this as? ContextWrapper)?.baseContext?.getActivity()
-    }
-
     fun setConfig(
         quality: Int = 80,
         format: Bitmap.CompressFormat? = Bitmap.CompressFormat.JPEG,

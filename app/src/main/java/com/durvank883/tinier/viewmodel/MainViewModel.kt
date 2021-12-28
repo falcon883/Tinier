@@ -7,12 +7,12 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.durvank883.tinier.MainActivity
 import com.durvank883.tinier.model.Photo
 import com.durvank883.tinier.util.ImageCompressor
 import com.hbisoft.pickit.PickiTCallbacks
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,6 +49,18 @@ class MainViewModel @Inject constructor(
     * Compression Path Channel
     * */
     private val compressionChannel = Channel<String?>()
+
+
+    /*
+    * Compress Progress
+    * */
+
+    private val _totalCompressed = MutableStateFlow(0)
+    val totalCompressed: StateFlow<Int> = _totalCompressed
+
+    private val _totalImagePathResolved = MutableStateFlow(0)
+    val totalImagePathResolved: StateFlow<Int> = _totalImagePathResolved
+
 
     fun setPhotos(context: Context, newPhotos: List<Uri>) = viewModelScope.launch {
 
@@ -106,14 +118,12 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun compress(
-        activity: ComponentActivity,
+    fun setCompressConfig(
         quality: Int,
         maxImageSize: Map<String, String>,
         exportFormat: String,
         trailingName: String
-    ) = viewModelScope.launch(context = Dispatchers.IO) {
-
+    ) = viewModelScope.launch {
         val format: Bitmap.CompressFormat? = when (exportFormat) {
             "png" -> Bitmap.CompressFormat.PNG
             "jpg" -> Bitmap.CompressFormat.JPEG
@@ -134,6 +144,13 @@ class MainViewModel @Inject constructor(
             size = size,
             trailingName = trailingName
         )
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun compress(activity: ComponentActivity) = viewModelScope.launch(context = Dispatchers.IO) {
+        _totalImagePathResolved.value = 0
+        _totalCompressed.value = 0
+
         photos.value.forEach {
             imageCompressor.getPath(
                 activity = activity,
@@ -143,8 +160,12 @@ class MainViewModel @Inject constructor(
         }
 
         compressionChannel.consumeEach { path ->
+            _totalCompressed.value += 1
             imageCompressor.compressImage(path)
         }
+
+        Log.d(TAG, "compress: ${compressionChannel.isClosedForReceive}")
+        Log.d(TAG, "compress: ${compressionChannel.isClosedForSend}")
     }
 
     override fun PickiTonUriReturned() {
@@ -167,6 +188,7 @@ class MainViewModel @Inject constructor(
         Reason: String?
     ) {
         viewModelScope.launch {
+            _totalImagePathResolved.value += 1
             compressionChannel.send(path)
         }
     }
