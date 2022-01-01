@@ -62,6 +62,7 @@ import androidx.navigation.compose.rememberNavController
 import coil.compose.rememberImagePainter
 import com.durvank883.tinier.model.Photo
 import com.durvank883.tinier.route.MainRoutes
+import com.durvank883.tinier.service.ImageCompressorService
 import com.durvank883.tinier.ui.theme.Purple200
 import com.durvank883.tinier.ui.theme.TinierTheme
 import com.durvank883.tinier.util.Helper.getActivity
@@ -69,6 +70,9 @@ import com.durvank883.tinier.viewmodel.MainViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ObsoleteCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 
@@ -776,6 +780,7 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
     }
 }
 
+@OptIn(ObsoleteCoroutinesApi::class)
 @Composable
 fun CompressProgress(
     navController: NavHostController,
@@ -797,15 +802,33 @@ fun CompressProgress(
         ).show()
         navController.popBackStack()
     } else {
-
-        val totalResolved by viewModel.totalImagePathResolved.collectAsState()
+        val totalPhotos by viewModel.toCompress.collectAsState()
         val totalCompressed by viewModel.totalCompressed.collectAsState()
+        val totalPathResolved by viewModel.totalImagePathResolved.collectAsState()
+        val compressionStatus by viewModel.compressionStatus.collectAsState()
+
+        var progress by remember {
+            mutableStateOf(0)
+        }
 
         DisposableEffect(lifecycleOwner) {
 
             val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_CREATE) {
-                    viewModel.compress(activity = activity)
+                when (event) {
+                    Lifecycle.Event.ON_CREATE -> {
+                        if (compressionStatus in listOf(
+                                ImageCompressorService.COMPRESS_NOT_STARTED,
+                                ImageCompressorService.COMPRESS_STOPPED,
+                                ImageCompressorService.COMPRESS_DONE
+                            )
+                        ) {
+                            viewModel.startCompressService(context, activity)
+                        }
+                    }
+                    Lifecycle.Event.ON_DESTROY -> {
+                        viewModel.unbindCompressService(context)
+                    }
+                    else -> {}
                 }
             }
 
@@ -816,19 +839,18 @@ fun CompressProgress(
             }
         }
 
-        var progress by remember {
-            mutableStateOf(0)
-        }
-
-        if (totalResolved != 0) {
-            progress = (totalCompressed * 100) / totalResolved
+        if (totalPhotos != 0) {
+            progress = (totalCompressed * 100) / totalPhotos
         }
 
         Surface(
             color = MaterialTheme.colors.background
         ) {
             AnimatedVisibility(
-                visible = totalCompressed != totalResolved || totalResolved == 0,
+                visible = compressionStatus !in listOf(
+                    ImageCompressorService.COMPRESS_STOPPED,
+                    ImageCompressorService.COMPRESS_DONE
+                ),
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
@@ -852,7 +874,13 @@ fun CompressProgress(
                                     modifier = Modifier.size(240.dp)
                                 )
                                 Text(
-                                    text = "$progress%",
+                                    text = if (
+                                        compressionStatus == ImageCompressorService.COMPRESS_STARTED
+                                    ) {
+                                        "$progress%"
+                                    } else {
+                                        compressionStatus
+                                    },
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 24.sp
                                 )
@@ -864,7 +892,16 @@ fun CompressProgress(
                             withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
                                 append("Total Photos: ")
                             }
-                            append(totalResolved.toString())
+                            append(totalPhotos.toString())
+                        })
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(text = buildAnnotatedString {
+                            withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                                append("Total Image Path Resolved: ")
+                            }
+                            append(totalPathResolved.toString())
                         })
 
                         Spacer(modifier = Modifier.height(10.dp))
@@ -880,7 +917,10 @@ fun CompressProgress(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Row {
-                        OutlinedButton(onClick = { }, modifier = Modifier.weight(1f)) {
+                        OutlinedButton(
+                            onClick = { viewModel.stopCompressService(context) },
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Text(text = "Stop")
                         }
                         Button(
@@ -894,10 +934,46 @@ fun CompressProgress(
             }
 
             AnimatedVisibility(
-                visible = totalCompressed == totalResolved && totalResolved != 0,
+                visible = compressionStatus == ImageCompressorService.COMPRESS_STOPPED,
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
+
+                LaunchedEffect(Unit) {
+                    delay(2000)
+                    navController.navigate(MainRoutes.Dashboard.route)
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Image(
+                        imageVector = Icons.Filled.Warning,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        colorFilter = ColorFilter.tint(color = Color(255, 105, 95))
+                    )
+                    Text(
+                        text = "Task Failed 😟",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = compressionStatus == ImageCompressorService.COMPRESS_DONE,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+
+                LaunchedEffect(Unit) {
+                    delay(2000)
+                    navController.navigate(MainRoutes.Dashboard.route)
+                }
+
                 Box {
                     Image(
                         painter = painterResource(id = R.drawable.confetti),
@@ -932,71 +1008,35 @@ fun CompressProgress(
 @Composable
 fun TestScreen() {
     val isCompleted by remember {
-        mutableStateOf(true)
+        mutableStateOf(false)
     }
 
     Surface(
         color = MaterialTheme.colors.background
     ) {
-        AnimatedVisibility(visible = !isCompleted) {
+        AnimatedVisibility(
+            visible = !isCompleted,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
             Column(
-                verticalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(15.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxSize()
             ) {
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(
-                                progress = 0.1f,
-                                modifier = Modifier.size(240.dp)
-                            )
-                            Text(
-                                text = "10%",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 24.sp
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(text = buildAnnotatedString {
-                        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
-                            append("Total Photos: ")
-                        }
-                        append("100")
-                    })
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(text = buildAnnotatedString {
-                        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
-                            append("Total Compressed: ")
-                        }
-                        append("10")
-                    })
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row {
-                    OutlinedButton(onClick = { }, modifier = Modifier.weight(1f)) {
-                        Text(text = "Stop")
-                    }
-                    Button(onClick = { }, modifier = Modifier.weight(1f)) {
-                        Text(text = "Background")
-                    }
-                }
+                Image(
+                    imageVector = Icons.Filled.Warning,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    colorFilter = ColorFilter.tint(color = Color(255, 105, 95))
+                )
+                Text(
+                    text = "Task Failed 😟",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
-
         AnimatedVisibility(visible = isCompleted) {
             Box {
                 Image(

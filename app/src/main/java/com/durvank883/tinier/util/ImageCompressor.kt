@@ -1,9 +1,7 @@
 package com.durvank883.tinier.util
 
-import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
-import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build

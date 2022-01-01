@@ -7,25 +7,24 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.durvank883.tinier.model.CompressionConfig
 import com.durvank883.tinier.model.Photo
+import com.durvank883.tinier.service.ImageCompressorService
+import com.durvank883.tinier.service.ImageCompressorServiceBinder
 import com.durvank883.tinier.util.ImageCompressor
-import com.hbisoft.pickit.PickiTCallbacks
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import java.util.*
 import javax.inject.Inject
 
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    private val imageCompressor: ImageCompressor
-) : ViewModel(), PickiTCallbacks {
+    private val compressorServiceBinder: ImageCompressorServiceBinder
+) : ViewModel() {
 
     private val TAG: String? = MainViewModel::class.java.canonicalName
 
@@ -44,16 +43,20 @@ class MainViewModel @Inject constructor(
     private val _totalSelected = MutableStateFlow(0)
     val totalSelected: StateFlow<Int> = _totalSelected
 
-
     /*
-    * Compression Path Channel
+    * Compression Config
     * */
-    private val compressionChannel = Channel<String?>()
-
+    private val _compressionConfig = MutableStateFlow(CompressionConfig())
 
     /*
     * Compress Progress
     * */
+
+    private val _toCompress = MutableStateFlow(0)
+    val toCompress: StateFlow<Int> = _toCompress
+
+    private val _compressionStatus = MutableStateFlow("Not Started")
+    val compressionStatus: StateFlow<String> = _compressionStatus
 
     private val _totalCompressed = MutableStateFlow(0)
     val totalCompressed: StateFlow<Int> = _totalCompressed
@@ -138,66 +141,77 @@ class MainViewModel @Inject constructor(
             1024 * maxSize.toLong()
         }
 
-        imageCompressor.setConfig(
+        _compressionConfig.value = CompressionConfig(
             quality = quality,
-            format = format,
-            size = size,
+            maxImageSize = size,
+            exportFormat = format,
             trailingName = trailingName
         )
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun compress(activity: ComponentActivity) = viewModelScope.launch(context = Dispatchers.IO) {
-        _totalImagePathResolved.value = 0
-        _totalCompressed.value = 0
+    fun startCompressService(context: Context, activity: ComponentActivity) {
 
-        photos.value.forEach {
-            imageCompressor.getPath(
-                activity = activity,
-                listener = this@MainViewModel,
-                imageUri = it.uri
+        compressorServiceBinder.doBindService(context = context)
+
+        if (_compressionStatus.value in listOf(
+                ImageCompressorService.COMPRESS_NOT_STARTED,
+                ImageCompressorService.COMPRESS_STOPPED,
+                ImageCompressorService.COMPRESS_DONE
             )
+        ) {
+            viewModelScope.launch(context = Dispatchers.IO) {
+                compressorServiceBinder.mService.collect { compressorService ->
+                    val config = _compressionConfig.value
+                    Log.d(TAG, "startCompressService: Started")
+                    compressorService?.let { service ->
+                        launch {
+                            service.toCompress.collect {
+                                _toCompress.value = it
+                            }
+                        }
+
+                        launch {
+                            service.compressionStatus.collect {
+                                _compressionStatus.value = it
+                            }
+                        }
+
+                        launch {
+                            service.totalCompressed.collect {
+                                _totalCompressed.value = it
+                            }
+                        }
+
+                        launch {
+                            service.totalImagePathResolved.collect {
+                                _totalImagePathResolved.value = it
+                            }
+                        }
+
+                        service.setImageCompressor(ImageCompressor(context))
+                        service.setCompressConfig(
+                            quality = config.quality,
+                            maxImageSize = config.maxImageSize,
+                            exportFormat = config.exportFormat,
+                            trailingName = config.trailingName
+                        )
+
+                        service.compress(
+                            activity = activity,
+                            photoSet = photos.value
+                        ).join()
+                    }
+                }
+            }
         }
-
-        compressionChannel.consumeEach { path ->
-            _totalCompressed.value += 1
-            imageCompressor.compressImage(path)
-        }
-
-        Log.d(TAG, "compress: ${compressionChannel.isClosedForReceive}")
-        Log.d(TAG, "compress: ${compressionChannel.isClosedForSend}")
     }
 
-    override fun PickiTonUriReturned() {
-
+    fun stopCompressService(context: Context): Boolean {
+        compressorServiceBinder.cancelJob(context = context)
+        return compressorServiceBinder.doUnbindService(context = context)
     }
 
-    override fun PickiTonStartListener() {
-
-    }
-
-    override fun PickiTonProgressUpdate(progress: Int) {
-
-    }
-
-    override fun PickiTonCompleteListener(
-        path: String?,
-        wasDriveFile: Boolean,
-        wasUnknownProvider: Boolean,
-        wasSuccessful: Boolean,
-        Reason: String?
-    ) {
-        viewModelScope.launch {
-            _totalImagePathResolved.value += 1
-            compressionChannel.send(path)
-        }
-    }
-
-    override fun PickiTonMultipleCompleteListener(
-        paths: ArrayList<String>?,
-        wasSuccessful: Boolean,
-        Reason: String?
-    ) {
-
+    fun unbindCompressService(context: Context): Boolean {
+        return compressorServiceBinder.doUnbindService(context = context)
     }
 }
