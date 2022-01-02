@@ -5,17 +5,18 @@ import androidx.compose.material.MaterialTheme
 import androidx.compose.material.darkColors
 import androidx.compose.material.lightColors
 import androidx.compose.runtime.Composable
+import com.google.accompanist.systemuicontroller.rememberSystemUiController
 
 private val DarkColorPalette = darkColors(
-    primary = Purple200,
-    primaryVariant = Purple700,
-    secondary = Teal200
+    primary = AshGray,
+    primaryVariant = Ebony,
+    secondary = DesertSand
 )
 
 private val LightColorPalette = lightColors(
-    primary = Purple500,
-    primaryVariant = Purple700,
-    secondary = Teal200
+    primary = Artichoke,
+    primaryVariant = Ebony,
+    secondary = DesertSand
 
     /* Other default colors to override
     background = Color.White,
@@ -28,10 +29,20 @@ private val LightColorPalette = lightColors(
 )
 
 @Composable
-fun TinierTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable() () -> Unit) {
+fun TinierTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+
+    val systemUiController = rememberSystemUiController()
     val colors = if (darkTheme) {
+        systemUiController.setSystemBarsColor(
+            color = Ebony,
+            darkIcons = false,
+        )
         DarkColorPalette
     } else {
+        systemUiController.setSystemBarsColor(
+            color = Ebony,
+            darkIcons = true
+        )
         LightColorPalette
     }
 

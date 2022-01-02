@@ -8,11 +8,11 @@ import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.*
@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
@@ -30,20 +31,24 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.*
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
@@ -63,15 +68,12 @@ import coil.compose.rememberImagePainter
 import com.durvank883.tinier.model.Photo
 import com.durvank883.tinier.route.MainRoutes
 import com.durvank883.tinier.service.ImageCompressorService
-import com.durvank883.tinier.ui.theme.Purple200
 import com.durvank883.tinier.ui.theme.TinierTheme
 import com.durvank883.tinier.util.Helper.getActivity
 import com.durvank883.tinier.viewmodel.MainViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.ObsoleteCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -115,6 +117,9 @@ fun MainScreen() {
         }
 
         composable(MainRoutes.CompressProgress.route) {
+
+            BackHandler { /* Do Nothing */ }
+
             val parentEntry = remember {
                 navController.getBackStackEntry(MainRoutes.Dashboard.route)
             }
@@ -303,7 +308,6 @@ fun CheckPermission(content: @Composable () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun Dashboard(navController: NavHostController, viewModel: MainViewModel) {
 
@@ -352,7 +356,7 @@ fun Dashboard(navController: NavHostController, viewModel: MainViewModel) {
                             )
                         }
                     },
-                    backgroundColor = Color.DarkGray,
+                    backgroundColor = MaterialTheme.colors.secondary,
                     elevation = 12.dp
                 )
             }
@@ -375,6 +379,7 @@ fun Dashboard(navController: NavHostController, viewModel: MainViewModel) {
                             )
                         }
                     },
+                    backgroundColor = MaterialTheme.colors.primarySurface,
                     elevation = 12.dp
                 )
             }
@@ -450,7 +455,6 @@ fun <T> LazyGridFor(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PhotoGrid(photoList: List<Photo>, viewModel: MainViewModel = viewModel()) {
 
@@ -476,7 +480,8 @@ fun PhotoGrid(photoList: List<Photo>, viewModel: MainViewModel = viewModel()) {
                 contentDescription = null,
                 modifier = Modifier
                     .size(128.dp)
-                    .padding(3.dp)
+                    .padding(2.dp)
+                    .clip(shape = RoundedCornerShape(10.dp))
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = {
@@ -505,7 +510,7 @@ fun PhotoGrid(photoList: List<Photo>, viewModel: MainViewModel = viewModel()) {
                         }),
                     contentDescription = null,
                     modifier = Modifier.size(64.dp),
-                    colorFilter = ColorFilter.tint(Color.DarkGray)
+                    colorFilter = ColorFilter.tint(MaterialTheme.colors.primary)
                 )
             }
         }
@@ -520,13 +525,15 @@ fun VerticalLines(dates: List<String>) {
             .height(10.dp)
     ) {
         val drawPadding: Float = with(LocalDensity.current) { 10.dp.toPx() }
+        val lineColor = MaterialTheme.colors.primary
+
         Canvas(modifier = Modifier.fillMaxSize()) {
             val yStart = 0f
             val yEnd = size.height
             val distance: Float = (size.width.minus(2 * drawPadding)).div(dates.size.minus(1))
             dates.forEachIndexed { index, _ ->
                 drawLine(
-                    color = Purple200,
+                    color = lineColor,
                     start = Offset(x = drawPadding + index.times(distance), y = yStart),
                     end = Offset(x = drawPadding + index.times(distance), y = yEnd),
                     strokeWidth = 5f
@@ -536,6 +543,7 @@ fun VerticalLines(dates: List<String>) {
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun Compress(navController: NavHostController, viewModel: MainViewModel) {
     Scaffold(
@@ -559,6 +567,8 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
         Surface(
             color = MaterialTheme.colors.background
         ) {
+            val focusManager = LocalFocusManager.current
+
             val totalPhotos = viewModel.photos.collectAsState().value.size
             var sliderPosition by remember { mutableStateOf(80f) }
             var expanded by remember { mutableStateOf(false) }
@@ -643,7 +653,15 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
                     label = { Text("Enter max image size") },
                     maxLines = 1,
                     modifier = Modifier
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .onKeyEvent {
+                            if (it.key.keyCode == Key.Tab.keyCode) {
+                                focusManager.moveFocus(FocusDirection.Down)
+                                true
+                            } else {
+                                false
+                            }
+                        },
                     trailingIcon = {
                         IconToggleButton(
                             checked = isSizeInKB,
@@ -658,7 +676,14 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
                             }
                         }
                     },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(onNext = {
+                        focusManager.moveFocus(FocusDirection.Down)
+                    }),
+                    singleLine = true,
                 )
                 Spacer(modifier = Modifier.padding(vertical = 10.dp))
 
@@ -740,7 +765,14 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
                     maxLines = 1,
                     modifier = Modifier
                         .fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(onDone = {
+                        focusManager.clearFocus()
+                    }),
+                    singleLine = true
                 )
                 Spacer(modifier = Modifier.padding(vertical = 10.dp))
 
@@ -780,7 +812,6 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
     }
 }
 
-@OptIn(ObsoleteCoroutinesApi::class)
 @Composable
 fun CompressProgress(
     navController: NavHostController,

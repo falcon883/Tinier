@@ -6,12 +6,10 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
 import android.util.Log
-import kotlinx.coroutines.ObsoleteCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import javax.inject.Inject
 
 
-@OptIn(ObsoleteCoroutinesApi::class)
 class ImageCompressorServiceBinder @Inject constructor() {
 
     val TAG: String? = this::class.java.canonicalName
