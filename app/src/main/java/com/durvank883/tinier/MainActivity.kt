@@ -345,7 +345,7 @@ fun Dashboard(navController: NavHostController, viewModel: MainViewModel) {
                     actions = {
                         IconButton(onClick = { viewModel.removeSelectedPhotos() }) {
                             Icon(
-                                painter = painterResource(id = R.drawable.ic_remove_24),
+                                painter = painterResource(id = R.drawable.remove_image_96),
                                 contentDescription = "Remove Photos"
                             )
                         }
@@ -373,7 +373,7 @@ fun Dashboard(navController: NavHostController, viewModel: MainViewModel) {
                     actions = {
                         IconButton(onClick = { launcher.launch("image/*") }) {
                             Icon(
-                                painter = painterResource(id = R.drawable.sum_24),
+                                painter = painterResource(id = R.drawable.add_image_96),
                                 contentDescription = "Add Photos",
                                 modifier = Modifier.size(24.dp)
                             )
@@ -509,7 +509,8 @@ fun PhotoGrid(photoList: List<Photo>, viewModel: MainViewModel = viewModel()) {
                             crossfade(true)
                         }),
                     contentDescription = null,
-                    modifier = Modifier.size(64.dp),
+                    modifier = Modifier
+                        .size(64.dp),
                     colorFilter = ColorFilter.tint(MaterialTheme.colors.primary)
                 )
             }
