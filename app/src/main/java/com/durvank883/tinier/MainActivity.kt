@@ -66,15 +66,19 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import coil.compose.rememberImagePainter
 import com.durvank883.tinier.model.Photo
+import com.durvank883.tinier.prefs.SettingsDataStore
 import com.durvank883.tinier.route.MainRoutes
 import com.durvank883.tinier.service.ImageCompressorService
 import com.durvank883.tinier.ui.theme.TinierTheme
 import com.durvank883.tinier.util.Helper.getActivity
+import com.durvank883.tinier.util.ThemeMode
 import com.durvank883.tinier.viewmodel.MainViewModel
+import com.durvank883.tinier.viewmodel.SettingsViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
+import javax.inject.Inject
 import kotlin.math.roundToInt
 
 
@@ -82,10 +86,22 @@ val TAG: String? = MainActivity::class.java.canonicalName
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var settingsDataStore: SettingsDataStore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            TinierTheme {
+            val themeMode by settingsDataStore.themeModeFlow.collectAsState(initial = 0)
+            val isDarkTheme = when (themeMode) {
+                ThemeMode.SYSTEM_DEFAULT_THEME.modeNo -> isSystemInDarkTheme()
+                ThemeMode.LIGHT_THEME.modeNo -> false
+                ThemeMode.DARK_THEME.modeNo -> true
+                else -> isSystemInDarkTheme()
+            }
+
+            TinierTheme(darkTheme = isDarkTheme) {
                 MainScreen()
 //                TestScreen()
             }
@@ -130,6 +146,11 @@ fun MainScreen() {
                 navController = navController,
                 viewModel = parentViewModel,
             )
+        }
+
+        composable(MainRoutes.Settings.route) {
+            val viewModel = hiltViewModel<SettingsViewModel>()
+            Settings(navController = navController, viewModel = viewModel)
         }
     }
 }
@@ -375,6 +396,13 @@ fun Dashboard(navController: NavHostController, viewModel: MainViewModel) {
                             Icon(
                                 painter = painterResource(id = R.drawable.add_image_96),
                                 contentDescription = "Add Photos",
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        IconButton(onClick = { navController.navigate(MainRoutes.Settings.route) }) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = "Settings",
                                 modifier = Modifier.size(24.dp)
                             )
                         }
@@ -918,7 +946,7 @@ fun CompressProgress(
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(20.dp))
 
                         Text(text = buildAnnotatedString {
                             withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
@@ -1039,58 +1067,21 @@ fun CompressProgress(
 
 @Composable
 fun TestScreen() {
-    val isCompleted by remember {
-        mutableStateOf(false)
-    }
-
     Surface(
         color = MaterialTheme.colors.background
     ) {
-        AnimatedVisibility(
-            visible = !isCompleted,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-                modifier = Modifier.fillMaxSize()
+        Row {
+            OutlinedButton(
+                onClick = { },
+                modifier = Modifier.weight(1f)
             ) {
-                Image(
-                    imageVector = Icons.Filled.Warning,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    colorFilter = ColorFilter.tint(color = Color(255, 105, 95))
-                )
-                Text(
-                    text = "Task Failed 😟",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text(text = "Stop")
             }
-        }
-        AnimatedVisibility(visible = isCompleted) {
-            Box {
-                Image(
-                    painter = painterResource(id = R.drawable.confetti),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    alignment = Alignment.TopCenter,
-                    contentScale = ContentScale.Crop
-                )
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_check_circle_24),
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        colorFilter = ColorFilter.tint(color = Color(119, 221, 119))
-                    )
-                    Text(text = "It's Done 🥳", fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-                }
+            Button(
+                onClick = { },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(text = "Background")
             }
         }
     }
