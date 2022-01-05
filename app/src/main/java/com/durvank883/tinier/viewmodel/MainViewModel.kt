@@ -8,22 +8,23 @@ import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.durvank883.tinier.model.CompressionConfig
+import com.durvank883.tinier.model.ImageRes
 import com.durvank883.tinier.model.Photo
+import com.durvank883.tinier.prefs.SettingsDataStore
 import com.durvank883.tinier.service.ImageCompressorService
 import com.durvank883.tinier.service.ImageCompressorServiceBinder
 import com.durvank883.tinier.util.ImageCompressor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    private val compressorServiceBinder: ImageCompressorServiceBinder
+    private val compressorServiceBinder: ImageCompressorServiceBinder,
+    settingsDataStore: SettingsDataStore
 ) : ViewModel() {
 
     private val TAG: String? = MainViewModel::class.java.canonicalName
@@ -64,6 +65,21 @@ class MainViewModel @Inject constructor(
     private val _totalImagePathResolved = MutableStateFlow(0)
     val totalImagePathResolved: StateFlow<Int> = _totalImagePathResolved
 
+    /*
+    * Datastore
+    * */
+    private val appendNameAtStart: StateFlow<Boolean> =
+        settingsDataStore.appendNameAtStartFlow.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Lazily,
+            initialValue = false
+        )
+
+    val showResolution: StateFlow<Boolean> = settingsDataStore.showImageResolutionFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Lazily,
+        initialValue = false
+    )
 
     fun setPhotos(context: Context, newPhotos: List<Uri>) = viewModelScope.launch {
 
@@ -125,7 +141,8 @@ class MainViewModel @Inject constructor(
         quality: Int,
         maxImageSize: Map<String, String>,
         exportFormat: String,
-        trailingName: String
+        appendName: String,
+        resolution: ImageRes,
     ) = viewModelScope.launch {
         val format: Bitmap.CompressFormat? = when (exportFormat) {
             "png" -> Bitmap.CompressFormat.PNG
@@ -145,7 +162,9 @@ class MainViewModel @Inject constructor(
             quality = quality,
             maxImageSize = size,
             exportFormat = format,
-            trailingName = trailingName
+            appendName = appendName,
+            appendNameAtStart = appendNameAtStart.value,
+            imageRes = resolution
         )
     }
 
@@ -189,12 +208,7 @@ class MainViewModel @Inject constructor(
                         }
 
                         service.setImageCompressor(ImageCompressor(context))
-                        service.setCompressConfig(
-                            quality = config.quality,
-                            maxImageSize = config.maxImageSize,
-                            exportFormat = config.exportFormat,
-                            trailingName = config.trailingName
-                        )
+                        service.setCompressConfig(config = config)
 
                         service.compress(
                             activity = activity,

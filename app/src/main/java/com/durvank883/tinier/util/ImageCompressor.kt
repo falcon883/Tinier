@@ -10,14 +10,12 @@ import android.provider.MediaStore
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.annotation.RequiresApi
+import com.durvank883.tinier.model.ImageRes
 import com.hbisoft.pickit.PickiT
 import com.hbisoft.pickit.PickiTCallbacks
 import dagger.hilt.android.qualifiers.ApplicationContext
 import id.zelory.compressor.Compressor
-import id.zelory.compressor.constraint.destination
-import id.zelory.compressor.constraint.format
-import id.zelory.compressor.constraint.quality
-import id.zelory.compressor.constraint.size
+import id.zelory.compressor.constraint.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -30,18 +28,24 @@ class ImageCompressor @Inject constructor(
     private var quality: Int = 80
     private var format: Bitmap.CompressFormat? = Bitmap.CompressFormat.JPEG
     private var size: Long = 0
-    private var trailingName: String = "_compressed"
+    private var appendName: String = "_compressed"
+    private var appendNameAtStart: Boolean = false
+    private var imageRes: ImageRes = ImageRes()
 
     fun setConfig(
         quality: Int = 80,
         format: Bitmap.CompressFormat? = Bitmap.CompressFormat.JPEG,
         size: Long = 0,
-        trailingName: String = "_compressed"
+        appendName: String = "_compressed",
+        appendNameAtStart: Boolean = false,
+        imageRes: ImageRes = ImageRes(),
     ): ImageCompressor {
         this.quality = quality
         this.format = format
         this.size = size
-        this.trailingName = trailingName
+        this.appendName = appendName
+        this.appendNameAtStart = appendNameAtStart
+        this.imageRes = imageRes
 
         return this
     }
@@ -101,6 +105,12 @@ class ImageCompressor @Inject constructor(
                 else -> ".jpg"
             }
 
+            val nameToAppend = if (appendNameAtStart) {
+                "$appendName${imageFile.nameWithoutExtension}$extension"
+            } else {
+                "${imageFile.nameWithoutExtension}$appendName$extension"
+            }
+
             val compressedFile = Compressor.compress(
                 context = context,
                 imageFile = imageFile
@@ -113,7 +123,7 @@ class ImageCompressor @Inject constructor(
                     destination(
                         File(
                             compressedImagesPath,
-                            "${imageFile.nameWithoutExtension}$trailingName${extension}"
+                            nameToAppend
                         )
                     )
                 }
@@ -121,16 +131,18 @@ class ImageCompressor @Inject constructor(
                 if (size != 0L) {
                     size(maxFileSize = size)
                 }
+
+                if (imageRes.imageHeight != 0 || imageRes.imageWidth != 0) {
+                    resolution(imageRes.imageWidth, imageRes.imageHeight)
+                }
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 saveImageToStorage(
                     imageFile = compressedFile,
-                    filename = "${imageFile.nameWithoutExtension}$trailingName${extension}"
+                    filename = nameToAppend
                 )
             }
-
-//            compressedFile.delete()
 
             Log.d("TAG", "compressImage: Compressed ${compressedFile.absolutePath}")
         }

@@ -8,6 +8,7 @@ import android.os.Binder
 import android.os.IBinder
 import android.util.Log
 import androidx.activity.ComponentActivity
+import com.durvank883.tinier.model.CompressionConfig
 import com.durvank883.tinier.model.Photo
 import com.durvank883.tinier.util.ImageCompressor
 import com.hbisoft.pickit.PickiTCallbacks
@@ -62,17 +63,14 @@ class ImageCompressorService : Service(), PickiTCallbacks {
         this.imageCompressor = imageCompressor
     }
 
-    fun setCompressConfig(
-        quality: Int,
-        maxImageSize: Long,
-        exportFormat: Bitmap.CompressFormat?,
-        trailingName: String
-    ) {
+    fun setCompressConfig(config: CompressionConfig) {
         imageCompressor.setConfig(
-            quality = quality,
-            format = exportFormat,
-            size = maxImageSize,
-            trailingName = trailingName
+            quality = config.quality,
+            format = config.exportFormat,
+            size = config.maxImageSize,
+            appendName = config.appendName,
+            appendNameAtStart = config.appendNameAtStart,
+            imageRes = config.imageRes
         )
     }
 

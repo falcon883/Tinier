@@ -6,5 +6,12 @@ data class CompressionConfig(
     val quality: Int = 0,
     val maxImageSize: Long = 0,
     val exportFormat: Bitmap.CompressFormat? = Bitmap.CompressFormat.JPEG,
-    val trailingName: String = ""
+    val appendName: String = "",
+    val appendNameAtStart: Boolean = false,
+    val imageRes: ImageRes = ImageRes(),
+)
+
+data class ImageRes(
+    val imageWidth: Int = 0,
+    val imageHeight: Int = 0,
 )

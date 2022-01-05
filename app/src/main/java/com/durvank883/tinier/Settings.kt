@@ -154,7 +154,11 @@ fun Settings(navController: NavHostController, viewModel: SettingsViewModel) {
                             checked = showImageResolution,
                             onCheckedChange = {
                                 viewModel.setShowResolution(shouldShow = !showImageResolution)
-                            })
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = MaterialTheme.colors.secondary
+                            )
+                        )
                     }
                     SpacedDivider()
 
@@ -181,7 +185,7 @@ fun Settings(navController: NavHostController, viewModel: SettingsViewModel) {
                             checked = appendNameAtStart,
                             modifier = Modifier
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colors.primary),
+                                .background(MaterialTheme.colors.secondary),
                             onCheckedChange = {
                                 viewModel.setAppendNameAtStart(pos = !appendNameAtStart)
                             }) {
@@ -190,7 +194,7 @@ fun Settings(navController: NavHostController, viewModel: SettingsViewModel) {
                                     "Start"
                                 } else {
                                     "End"
-                                }, color = MaterialTheme.colors.onPrimary
+                                }, color = MaterialTheme.colors.onSecondary
                             )
                         }
                     }

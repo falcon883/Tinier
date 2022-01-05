@@ -65,6 +65,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import coil.compose.rememberImagePainter
+import com.durvank883.tinier.model.ImageRes
 import com.durvank883.tinier.model.Photo
 import com.durvank883.tinier.prefs.SettingsDataStore
 import com.durvank883.tinier.route.MainRoutes
@@ -539,7 +540,7 @@ fun PhotoGrid(photoList: List<Photo>, viewModel: MainViewModel = viewModel()) {
                     contentDescription = null,
                     modifier = Modifier
                         .size(64.dp),
-                    colorFilter = ColorFilter.tint(MaterialTheme.colors.primary)
+                    colorFilter = ColorFilter.tint(MaterialTheme.colors.secondary)
                 )
             }
         }
@@ -606,6 +607,11 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
             var imageSize by remember { mutableStateOf("0") }
             var isSizeInKB by remember { mutableStateOf(true) }
             var fileName by remember { mutableStateOf("") }
+            val showResolution by viewModel.showResolution.collectAsState()
+
+            var imageWidth by remember { mutableStateOf("0") }
+            var imageHeight by remember { mutableStateOf("0") }
+            var aspectRationLock by remember { mutableStateOf(true) }
 
             Column(
                 modifier = Modifier
@@ -656,6 +662,102 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
                     )
                 }
                 Spacer(modifier = Modifier.padding(vertical = 10.dp))
+
+                if (showResolution) {
+                    Text(text = buildAnnotatedString {
+                        withStyle(
+                            style = SpanStyle(
+                                fontWeight = FontWeight.Bold
+                            )
+                        ) {
+                            append("Image Resolution:\n")
+                        }
+                        withStyle(
+                            style = SpanStyle(
+                                fontWeight = FontWeight.Light,
+                                fontSize = 12.sp
+                            )
+                        ) {
+                            append("(0 to ignore)")
+                        }
+                    })
+                    Spacer(modifier = Modifier.padding(vertical = 5.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = imageWidth,
+                            onValueChange = { imageWidth = it },
+                            label = { Text("Width") },
+                            maxLines = 1,
+                            modifier = Modifier
+                                .weight(1f)
+                                .onKeyEvent {
+                                    if (it.key.keyCode == Key.Tab.keyCode) {
+                                        focusManager.moveFocus(FocusDirection.Right)
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(onNext = {
+                                focusManager.moveFocus(FocusDirection.Right)
+                            }),
+                            singleLine = true
+                        )
+
+                        IconToggleButton(
+                            checked = aspectRationLock,
+                            onCheckedChange = { aspectRationLock = !aspectRationLock },
+                        ) {
+                            Icon(
+                                painter = painterResource(
+                                    id = if (aspectRationLock) {
+                                        R.drawable.ic_lock_24
+                                    } else {
+                                        R.drawable.ic_lock_open_24
+                                    }
+                                ),
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        OutlinedTextField(
+                            value = imageHeight,
+                            onValueChange = { imageHeight = it },
+                            label = { Text("Height") },
+                            maxLines = 1,
+                            modifier = Modifier
+                                .weight(1f)
+                                .onKeyEvent {
+                                    if (it.key.keyCode == Key.Tab.keyCode) {
+                                        focusManager.moveFocus(FocusDirection.Down)
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(onNext = {
+                                focusManager.moveFocus(FocusDirection.Down)
+                            }),
+                            singleLine = true
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.padding(vertical = 10.dp))
+                }
 
                 Text(text = buildAnnotatedString {
                     withStyle(
@@ -816,7 +918,11 @@ fun Compress(navController: NavHostController, viewModel: MainViewModel) {
                                 } to imageSize
                             ),
                             exportFormat = exportFormats[selectedIndex],
-                            trailingName = fileName
+                            appendName = fileName,
+                            resolution = ImageRes(
+                                imageWidth = imageWidth.toInt(),
+                                imageHeight = imageHeight.toInt()
+                            )
                         ).invokeOnCompletion {
                             Log.d(TAG, "Compress Config Error: $it")
                             navController.navigate(MainRoutes.CompressProgress.route)
@@ -850,7 +956,6 @@ fun CompressProgress(
 
     val context = LocalContext.current
     val activity: ComponentActivity? = context.getActivity()
-
 
     if (activity == null) {
         Toast.makeText(
@@ -1001,6 +1106,7 @@ fun CompressProgress(
 
                 LaunchedEffect(Unit) {
                     delay(2000)
+                    navController.backQueue.clear()
                     navController.navigate(MainRoutes.Dashboard.route)
                 }
 
@@ -1031,6 +1137,7 @@ fun CompressProgress(
 
                 LaunchedEffect(Unit) {
                     delay(2000)
+                    navController.backQueue.clear()
                     navController.navigate(MainRoutes.Dashboard.route)
                 }
 
@@ -1067,30 +1174,17 @@ fun CompressProgress(
 
 @Composable
 fun TestScreen() {
-    Surface(
-        color = MaterialTheme.colors.background
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(15.dp)
     ) {
-        Row {
-            OutlinedButton(
-                onClick = { },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(text = "Stop")
-            }
-            Button(
-                onClick = { },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(text = "Background")
-            }
-        }
+
     }
 }
 
-@Preview(showBackground = true)
+@Preview(showBackground = true, showSystemUi = true)
 @Composable
 fun DefaultPreview() {
-    TinierTheme {
-        TestScreen()
-    }
+    TestScreen()
 }
