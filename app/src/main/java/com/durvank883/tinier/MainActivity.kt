@@ -18,10 +18,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -33,7 +30,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -466,16 +462,14 @@ fun <T> LazyGridFor(
     listState: LazyListState,
     itemContent: @Composable BoxScope.(T) -> Unit,
 ) {
-    LazyColumn(state = listState) {
-        items(items = items.chunked(rowSize), key = { row -> row.hashCode() }) { row ->
-            Row(
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(2.dp)) {
+        items(items = items.chunked(rowSize)) { row ->
+            LazyRow(
                 modifier = Modifier.fillParentMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                for ((index, item) in row.withIndex()) {
-                    Box(
-                        Modifier.fillMaxWidth(1f / (rowSize - index)),
-                        contentAlignment = Alignment.Center
-                    ) {
+                itemsIndexed(items = row, key = { _, item -> item.hashCode() }) { index, item ->
+                    Box(modifier = Modifier.fillMaxWidth(1f / (rowSize - index))) {
                         itemContent(item)
                     }
                 }
@@ -489,15 +483,20 @@ fun PhotoGrid(photoList: List<Photo>, viewModel: MainViewModel = viewModel()) {
 
     val isActionMode by viewModel.isActionMode.collectAsState()
     val listState = rememberLazyListState()
+    var imageSize by remember { mutableStateOf(128) }
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+    val rowSize = maxOf(screenWidth / imageSize, 1).also {
+        imageSize = (screenWidth / it) - (4 * 2)
+    }
 
     LazyGridFor(
         items = photoList,
-        rowSize = LocalConfiguration.current.screenWidthDp / 128,
+        rowSize = rowSize,
         listState = listState
     ) { photo ->
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.wrapContentSize()
+            modifier = Modifier.wrapContentSize().padding(2.dp)
         ) {
             Image(
                 painter = rememberImagePainter(
@@ -508,9 +507,7 @@ fun PhotoGrid(photoList: List<Photo>, viewModel: MainViewModel = viewModel()) {
                     }),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(128.dp)
-                    .padding(2.dp)
-                    .clip(shape = RoundedCornerShape(10.dp))
+                    .size(imageSize.dp)
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = {
