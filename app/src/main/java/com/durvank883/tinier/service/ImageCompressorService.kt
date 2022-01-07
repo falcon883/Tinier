@@ -3,23 +3,26 @@ package com.durvank883.tinier.service
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.os.Binder
 import android.os.IBinder
 import android.util.Log
 import androidx.activity.ComponentActivity
 import com.durvank883.tinier.model.CompressionConfig
 import com.durvank883.tinier.model.Photo
+import com.durvank883.tinier.notification.ImageCompressorNotification
 import com.durvank883.tinier.util.ImageCompressor
 import com.hbisoft.pickit.PickiTCallbacks
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.util.*
+import javax.inject.Inject
 
 
 @Suppress("DeferredResultUnused")
+@AndroidEntryPoint
 class ImageCompressorService : Service(), PickiTCallbacks {
 
     companion object {
@@ -30,6 +33,9 @@ class ImageCompressorService : Service(), PickiTCallbacks {
         const val COMPRESS_STOPPED = "Stopped"
         const val COMPRESS_DONE = "Done"
     }
+
+    @Inject
+    lateinit var imageCompressorNotification: ImageCompressorNotification
 
     private val job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.IO + job)
@@ -56,12 +62,12 @@ class ImageCompressorService : Service(), PickiTCallbacks {
     private val _totalImagePathResolved = MutableStateFlow(0)
     val totalImagePathResolved: StateFlow<Int> = _totalImagePathResolved
 
-    private lateinit var imageCompressor: ImageCompressor
+    @Inject
+    lateinit var imageCompressor: ImageCompressor
 
-    /* Client Methods */
-    fun setImageCompressor(imageCompressor: ImageCompressor) {
-        this.imageCompressor = imageCompressor
-    }
+    /*
+    * Client Methods
+    * */
 
     fun setCompressConfig(config: CompressionConfig) {
         imageCompressor.setConfig(
@@ -77,6 +83,8 @@ class ImageCompressorService : Service(), PickiTCallbacks {
     @OptIn(ExperimentalCoroutinesApi::class)
     suspend fun compress(activity: ComponentActivity, photoSet: Set<Photo>) = scope.launch {
         Log.d("TAG", "compress: Service Compress Called")
+        imageCompressorNotification.init().startNotifying()
+
         _photos.value = photoSet
         _totalImagePathResolved.value = 0
         _totalCompressed.value = 0
@@ -101,20 +109,36 @@ class ImageCompressorService : Service(), PickiTCallbacks {
         for (path in compressionChannel) {
             imageCompressor.compressImage(path)
             _totalCompressed.value += 1
+
+            imageCompressorNotification.updateProgress(
+                maxProgress = _toCompress.value,
+                currentProgress = _totalCompressed.value
+            )
         }
 
         _compressionStatus.value = COMPRESS_CLEANING_UP
+        imageCompressorNotification.updateContentText(COMPRESS_CLEANING_UP)
         activity.applicationContext.cacheDir.deleteRecursively()
 
         _compressionStatus.value = COMPRESS_DONE
+        imageCompressorNotification.completeProgress()
     }
 
-    fun cancelJob(context: Context) {
+    fun cancelJob(context: Context, onCompletion: () -> Unit = {}) {
+        imageCompressorNotification.removeActions()
         job.cancel()
-        _compressionStatus.value = COMPRESS_STOPPED
+
+        _compressionStatus.value = COMPRESS_CLEANING_UP
+        imageCompressorNotification.updateContentText(COMPRESS_CLEANING_UP)
 
         scope.launch(Dispatchers.IO) {
+            delay(6000)
             context.cacheDir.deleteRecursively()
+        }.invokeOnCompletion {
+            _compressionStatus.value = COMPRESS_STOPPED
+            imageCompressorNotification.updateContentText(COMPRESS_STOPPED)
+
+            onCompletion()
         }
     }
 
@@ -160,9 +184,7 @@ class ImageCompressorService : Service(), PickiTCallbacks {
         wasSuccessful: Boolean,
         Reason: String?
     ) {
-        Log.d("TAG", "PickiTonMultipleCompleteListener: $wasSuccessful")
-        Log.d("TAG", "PickiTonMultipleCompleteListener: ${paths?.size}")
-        Log.d("TAG", "PickiTonMultipleCompleteListener: $Reason")
+
     }
 
     inner class ICBinder : Binder() {
@@ -170,4 +192,14 @@ class ImageCompressorService : Service(), PickiTCallbacks {
     }
 
     override fun onBind(intent: Intent): IBinder = binder
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "STOP") {
+            cancelJob(applicationContext) {
+                imageCompressorNotification.dismissNotifications()
+                stopSelf()
+            }
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
 }

@@ -115,9 +115,17 @@ class ImageCompressor @Inject constructor(
                 context = context,
                 imageFile = imageFile
             ) {
+                if (imageRes.imageHeight != 0 || imageRes.imageWidth != 0) {
+                    resolution(imageRes.imageWidth, imageRes.imageHeight)
+                }
+
                 quality(quality = quality)
 
                 format?.let { format(it) }
+
+                if (size != 0L) {
+                    size(maxFileSize = size)
+                }
 
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                     destination(
@@ -126,14 +134,6 @@ class ImageCompressor @Inject constructor(
                             nameToAppend
                         )
                     )
-                }
-
-                if (size != 0L) {
-                    size(maxFileSize = size)
-                }
-
-                if (imageRes.imageHeight != 0 || imageRes.imageWidth != 0) {
-                    resolution(imageRes.imageWidth, imageRes.imageHeight)
                 }
             }
 

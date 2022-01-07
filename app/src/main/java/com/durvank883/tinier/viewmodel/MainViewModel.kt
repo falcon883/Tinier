@@ -207,9 +207,7 @@ class MainViewModel @Inject constructor(
                             }
                         }
 
-                        service.setImageCompressor(ImageCompressor(context))
                         service.setCompressConfig(config = config)
-
                         service.compress(
                             activity = activity,
                             photoSet = photos.value
