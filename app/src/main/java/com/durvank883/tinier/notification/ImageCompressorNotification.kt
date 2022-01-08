@@ -15,31 +15,36 @@ import com.durvank883.tinier.R
 import com.durvank883.tinier.service.ImageCompressorService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
 class ImageCompressorNotification @Inject constructor(
     @ApplicationContext val context: Context,
 ) {
 
     companion object {
         private const val CHANNEL_ID = "TINIER_COMPRESSOR"
-        private const val PROGRESS_NOTIFICATION_ID = 131313
+        const val PROGRESS_NOTIFICATION_ID = 131313
+
     }
 
-    private lateinit var builder: NotificationCompat.Builder
-    private lateinit var notificationManager: NotificationManagerCompat
+    val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+    private val notificationManager = NotificationManagerCompat.from(context)
+
+    private var showNotifications = false
 
     init {
         createNotificationChannel()
+        init()
     }
 
-    fun init(
+    private fun init(
         contentTitle: String = "Tinier",
         contentText: String = "Starting",
         smallIcon: Int = R.drawable.tinier_logo,
         color: Int = Color.Black.toArgb(),
         priority: Int = NotificationCompat.PRIORITY_LOW
-    ): ImageCompressorNotification {
-
+    ) {
         val notificationIntent = Intent(context, ImageCompressorService::class.java).apply {
             action = "STOP"
         }
@@ -56,7 +61,7 @@ class ImageCompressorNotification @Inject constructor(
             flags
         )
 
-        builder = NotificationCompat.Builder(context, CHANNEL_ID).apply {
+        builder.apply {
             setContentTitle(contentTitle)
             setContentText(contentText)
             setSmallIcon(smallIcon)
@@ -68,7 +73,6 @@ class ImageCompressorNotification @Inject constructor(
             setSilent(true)
             addAction(R.drawable.ic_stop_24, "Stop", pendingIntent)
         }
-        return this
     }
 
     private fun createNotificationChannel() {
@@ -83,51 +87,65 @@ class ImageCompressorNotification @Inject constructor(
         }
     }
 
-    fun startNotifying() {
-        notificationManager = NotificationManagerCompat.from(context).apply {
-            builder.setProgress(100, 0, false)
-            notify(PROGRESS_NOTIFICATION_ID, builder.build())
-        }
+    fun showNotifications(show: Boolean) {
+        this.showNotifications = show
     }
 
     fun updateContentText(contextText: String) {
-        notificationManager.apply {
-            builder.setContentText(contextText)
-            notify(PROGRESS_NOTIFICATION_ID, builder.build())
+        if (showNotifications) {
+            notificationManager.apply {
+                builder.setContentText(contextText)
+                notify(PROGRESS_NOTIFICATION_ID, builder.build())
+            }
         }
     }
 
     fun updateProgress(maxProgress: Int, currentProgress: Int) {
-        notificationManager.apply {
-            builder
-                .setContentText("Compressing")
-                .setProgress(maxProgress, currentProgress, false)
-            notify(PROGRESS_NOTIFICATION_ID, builder.build())
+        if (showNotifications) {
+            notificationManager.apply {
+                builder
+                    .setContentText("Compressing")
+                    .setProgress(maxProgress, currentProgress, false)
+                notify(PROGRESS_NOTIFICATION_ID, builder.build())
+            }
         }
     }
 
     fun removeActions() {
-        notificationManager.apply {
-            builder
-                .setProgress(0, 0, false)
-                .clearActions()
-            notify(PROGRESS_NOTIFICATION_ID, builder.build())
+        if (showNotifications) {
+            notificationManager.apply {
+                builder
+                    .setContentText("Stopping")
+                    .setProgress(0, 0, false)
+                    .clearActions()
+                notify(PROGRESS_NOTIFICATION_ID, builder.build())
+            }
         }
     }
 
     fun completeProgress(contentText: String = "Compression complete") {
-        notificationManager.apply {
-            builder
-                .setContentText(contentText)
-                .setProgress(0, 0, false)
-                .setOngoing(false)
-                .setAutoCancel(true)
-                .clearActions()
-            notify(PROGRESS_NOTIFICATION_ID, builder.build())
+        if (showNotifications) {
+            notificationManager.apply {
+                builder
+                    .setContentText(contentText)
+                    .setProgress(0, 0, false)
+                    .setOngoing(false)
+                    .setAutoCancel(true)
+                    .clearActions()
+                notify(PROGRESS_NOTIFICATION_ID, builder.build())
+            }
         }
     }
 
     fun dismissNotifications() {
-        notificationManager.cancelAll()
+        if (showNotifications) {
+            notificationManager.apply {
+                builder
+                    .clearActions()
+                    .setProgress(0, 0, false)
+                cancelAll()
+            }
+//            showNotifications(show = false)
+        }
     }
 }

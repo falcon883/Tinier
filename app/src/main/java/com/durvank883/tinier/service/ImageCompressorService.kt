@@ -39,6 +39,7 @@ class ImageCompressorService : Service(), PickiTCallbacks {
 
     private val job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.IO + job)
+    private lateinit var compressJob: Job
 
     private val binder = ICBinder()
 
@@ -81,64 +82,78 @@ class ImageCompressorService : Service(), PickiTCallbacks {
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    suspend fun compress(activity: ComponentActivity, photoSet: Set<Photo>) = scope.launch {
-        Log.d("TAG", "compress: Service Compress Called")
-        imageCompressorNotification.init().startNotifying()
+    suspend fun compress(activity: ComponentActivity, photoSet: Set<Photo>): Job {
+        val compressJob = scope.launch {
+            Log.d("TAG", "compress: Service Compress Called")
+            imageCompressorNotification.showNotifications(show = false)
 
-        _photos.value = photoSet
-        _totalImagePathResolved.value = 0
-        _totalCompressed.value = 0
-        _toCompress.value = photos.value.size
-        _compressionStatus.value = COMPRESS_STARTING
+            _photos.value = photoSet
+            _totalImagePathResolved.value = 0
+            _totalCompressed.value = 0
+            _toCompress.value = photos.value.size
+            _compressionStatus.value = COMPRESS_STARTING
 
-        if (compressionChannel.isClosedForSend || compressionChannel.isClosedForReceive) {
-            compressionChannel = Channel()
-        }
+            if (compressionChannel.isClosedForSend || compressionChannel.isClosedForReceive) {
+                compressionChannel = Channel()
+            }
 
-        async {
-            photos.value.forEach { photo ->
-                imageCompressor.getPath(
-                    activity = activity,
-                    listener = this@ImageCompressorService,
-                    imageUri = photo.uri
+            async {
+                photos.value.forEach { photo ->
+                    imageCompressor.getPath(
+                        activity = activity,
+                        listener = this@ImageCompressorService,
+                        imageUri = photo.uri
+                    )
+                }
+            }
+
+            _compressionStatus.value = COMPRESS_STARTED
+            for (path in compressionChannel) {
+                imageCompressor.compressImage(path)
+                _totalCompressed.value += 1
+
+                imageCompressorNotification.updateProgress(
+                    maxProgress = _toCompress.value,
+                    currentProgress = _totalCompressed.value
                 )
             }
+
+            _compressionStatus.value = COMPRESS_CLEANING_UP
+            imageCompressorNotification.updateContentText(COMPRESS_CLEANING_UP)
+            activity.applicationContext.cacheDir.deleteRecursively()
+
+            _compressionStatus.value = COMPRESS_DONE
+            imageCompressorNotification.completeProgress()
         }
+        this.compressJob = compressJob
 
-        _compressionStatus.value = COMPRESS_STARTED
-        for (path in compressionChannel) {
-            imageCompressor.compressImage(path)
-            _totalCompressed.value += 1
-
-            imageCompressorNotification.updateProgress(
-                maxProgress = _toCompress.value,
-                currentProgress = _totalCompressed.value
-            )
-        }
-
-        _compressionStatus.value = COMPRESS_CLEANING_UP
-        imageCompressorNotification.updateContentText(COMPRESS_CLEANING_UP)
-        activity.applicationContext.cacheDir.deleteRecursively()
-
-        _compressionStatus.value = COMPRESS_DONE
-        imageCompressorNotification.completeProgress()
+        return compressJob
     }
 
     fun cancelJob(context: Context, onCompletion: () -> Unit = {}) {
-        imageCompressorNotification.removeActions()
-        job.cancel()
+        Log.i("TAG", "cancelJob: Called")
+        scope.launch {
+            imageCompressorNotification.removeActions()
+            compressJob.cancelAndJoin()
+            Log.i("TAG", "cancelJob: Cancelled Job")
 
-        _compressionStatus.value = COMPRESS_CLEANING_UP
-        imageCompressorNotification.updateContentText(COMPRESS_CLEANING_UP)
+            _compressionStatus.value = COMPRESS_CLEANING_UP
+            imageCompressorNotification.updateContentText(COMPRESS_CLEANING_UP)
 
-        scope.launch(Dispatchers.IO) {
-            delay(6000)
-            context.cacheDir.deleteRecursively()
-        }.invokeOnCompletion {
+            Log.i("TAG", "cancelJob: Launching cleaner")
+            scope.launch(Dispatchers.IO) {
+                val cleaned = context.cacheDir.deleteRecursively()
+                Log.i("TAG", "cancelJob: Cleaned: $cleaned")
+            }.join()
+
+            Log.i("TAG", "cancelJob: Stopping")
             _compressionStatus.value = COMPRESS_STOPPED
             imageCompressorNotification.updateContentText(COMPRESS_STOPPED)
 
+            Log.i("TAG", "cancelJob: Other calls")
             onCompletion()
+            Log.i("TAG", "cancelJob: DONE")
+            job.cancel()
         }
     }
 
@@ -196,10 +211,21 @@ class ImageCompressorService : Service(), PickiTCallbacks {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") {
             cancelJob(applicationContext) {
+                Log.i("TAG", "cancelJob: Inside onCompletion")
                 imageCompressorNotification.dismissNotifications()
+                stopForeground(true)
                 stopSelf()
+                Log.i("TAG", "cancelJob: onCompletion DONE")
             }
         }
-        return super.onStartCommand(intent, flags, startId)
+        return START_STICKY
+    }
+
+    fun moveToForeground() {
+        startForeground(
+            ImageCompressorNotification.PROGRESS_NOTIFICATION_ID,
+            imageCompressorNotification.builder.build()
+        )
+        imageCompressorNotification.showNotifications(show = true)
     }
 }

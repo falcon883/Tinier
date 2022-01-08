@@ -13,7 +13,6 @@ import com.durvank883.tinier.model.Photo
 import com.durvank883.tinier.prefs.SettingsDataStore
 import com.durvank883.tinier.service.ImageCompressorService
 import com.durvank883.tinier.service.ImageCompressorServiceBinder
-import com.durvank883.tinier.util.ImageCompressor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -221,6 +220,10 @@ class MainViewModel @Inject constructor(
     fun stopCompressService(context: Context): Boolean {
         compressorServiceBinder.cancelJob(context = context)
         return compressorServiceBinder.doUnbindService(context = context)
+    }
+
+    fun startForeground() {
+        compressorServiceBinder.mService.value?.moveToForeground()
     }
 
     fun unbindCompressService(context: Context): Boolean {

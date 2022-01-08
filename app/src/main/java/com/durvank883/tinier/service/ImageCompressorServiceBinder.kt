@@ -33,17 +33,16 @@ class ImageCompressorServiceBinder @Inject constructor() {
     fun cancelJob(context: Context) = mService.value?.cancelJob(context = context)
 
     fun doBindService(context: Context): Boolean {
-        if (context.bindService(
-                Intent(context, ImageCompressorService::class.java),
-                connection, Context.BIND_AUTO_CREATE
-            )
-        ) {
-            mBound.value = true
-        } else {
-            Log.e(
-                TAG, "Error: The requested service doesn't " +
-                        "exist, or this client isn't allowed access to it."
-            )
+        Intent(context, ImageCompressorService::class.java).also {
+            context.startService(it)
+            if (context.bindService(it, connection, Context.BIND_AUTO_CREATE)) {
+                mBound.value = true
+            } else {
+                Log.e(
+                    TAG, "Error: The requested service doesn't " +
+                            "exist, or this client isn't allowed access to it."
+                )
+            }
         }
 
         return mBound.value

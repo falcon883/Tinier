@@ -491,12 +491,16 @@ fun CompressProgress(
                             )
                         ) {
                             viewModel.startCompressService(context, activity)
+                            Log.i(TAG, "CompressProgress: Service bound")
                         }
                     }
                     Lifecycle.Event.ON_DESTROY -> {
                         viewModel.unbindCompressService(context)
+                        Log.i(TAG, "CompressProgress: Service unbound")
                     }
-                    else -> {}
+                    else -> {
+                        Log.i(TAG, "CompressProgress: Lifecycle.Event: ${event.name}")
+                    }
                 }
             }
 
@@ -592,7 +596,10 @@ fun CompressProgress(
                             Text(text = "Stop")
                         }
                         Button(
-                            onClick = { },
+                            onClick = {
+                                viewModel.startForeground()
+                                context.getActivity()?.moveTaskToBack(true)
+                            },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(text = "Background")
